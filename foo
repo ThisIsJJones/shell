@@ -1,0 +1,22 @@
+  PID TTY          TIME CMD
+28262 pts/0    00:00:00 bash
+28301 pts/0    00:00:00 a.out
+28302 pts/0    00:00:00 ps
+a.out
+foo
+lex.c
+lex.yy.c
+myshell.c
+test.c
+a.out
+foo
+lex.c
+lex.yy.c
+myshell.c
+test.c
+a.out
+foo
+lex.c
+lex.yy.c
+myshell.c
+test.c
