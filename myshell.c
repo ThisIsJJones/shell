@@ -25,8 +25,6 @@ void sig_handler(int signal) {
   printf("Wait returned %d\n", signal);
 }
 
-
-
 /*
  * The main shell function
  */ 
@@ -48,19 +46,18 @@ main() {
 // Loop forever
   while(1) {
 	int status;   
-int pid =  waitpid(-1, &status, WNOHANG);
-char* buff[100];
-    getcwd(buff, 100);
+	int pid =  waitpid(-1, &status, WNOHANG);
+	char* buff[100];
+    	getcwd(buff, 100);
 
-if(pid>0){
-	printf("PID %d has finished\n", pid);
-//	printf("%s$ ", buff);	
-}else{
-    char* buff[100];
-    getcwd(buff, 100);
-    // Print out the prompt and get the input
-    printf("%s$ ", buff);
-    args = getaline();
+	if(pid>0){
+		printf("PID %d has finished\n", pid);
+	}else{
+    		char* buff[100];
+    		getcwd(buff, 100);
+    		// Print out the prompt and get the input
+    		printf("%s$ ", buff);
+    		args = getaline();
 
     // No input, continue
     if(args[0] == NULL)
@@ -69,6 +66,27 @@ if(pid>0){
     // Check for internal shell commands, such as exit
     if(internal_command(args))
       continue;
+
+    	int index = 0;
+	int numPipes = 0;
+	int cmdcount=0;
+	char*** cmd[10];
+	cmd[cmdcount] = &args[0];
+	cmdcount++;
+	while(args[index] != NULL){
+		if(args[index][0] == ';'){
+			cmd[cmdcount] = &args[index+1];
+			free(args[index]);	
+			args[index] = NULL;
+			cmdcount++;
+		}		
+		index++;
+	}
+
+	int j;
+	for(j=0;j < cmdcount; j++){
+	printf("COMMAND: %s\n", *cmd[j]);
+	args = cmd[j];		
 
     // Check for an ampersand
     block = ampersand(args);
@@ -109,11 +127,26 @@ if(pid>0){
     //Check for pipe
 //    pipe = redirect_pipe(args, &pipe_command);
 
+	index = 0;
+	int pipeCount = 0;
+	while(args[index] != NULL){
+		if(args[index][0] == '|'){
+			cmd[pipeCount] = &args[index+1];
+			free(args[index]);	
+			args[index] = NULL;
+			pipeCount++;
+		}		
+		index++;
+	}
+
+
+
     // Do the command
     do_command(args, block, 
 	       input, input_filename, 
 	       output, output_filename);
   }
+}
 }
 }
 
@@ -157,28 +190,8 @@ int do_command(char **args, int block,
   int result;
   pid_t child_id;
   int status;
-
-//sigset(SIGTTOU, sig_no);
-
-
-
-//struct sigaction new_action, old_action;
-
-//new_action.sa_handler = sig_no;
-//new_action.sa_flags = 0;
-//int act = sigaction(SIGTTIN, &new_action, NULL);
-//if(!act){
-//	printf("createdAction\n");
-//}else{
-//printf("failedAction\n");
-//}
-//sigset(SIGCHLD, sig_handler);
-//sigset(SIGTTOU, SIG_IGN);
-//sigset(SIGTTIN, SIG_IGN);
-//sigset(SIGCHLD, SIG_IGN);
- 
-
-  // Fork the child process
+  
+// Fork the child process
   child_id = fork();
 
   // Check for errors in fork()
@@ -191,8 +204,8 @@ int do_command(char **args, int block,
     return;
   }
  if(child_id == 0) {
-if(!block)
- setpgid(child_id, 0);
+	if(!block)
+	 setpgid(child_id, 0);
 	 // Set up redirection in the child process
     if(input)
       freopen(input_filename, "r", stdin);
@@ -201,15 +214,6 @@ if(!block)
       freopen(output_filename, "w+", stdout);
     if(output==2)
       freopen(output_filename, "a", stdout);
-
-// set back to default for potential children	
-//      signal (SIGINT, SIG_DFL);
-//      signal (SIGQUIT, SIG_DFL);
-//      signal (SIGTSTP, SIG_DFL);
-//      signal (SIGTTIN, SIG_DFL);
-//      signal (SIGTTOU, SIG_DFL);
-//      signal (SIGCHLD, SIG_DFL);
-
 
 //	printf("%s\n", args[0]);
 //	printf("%s\n", args[1]);
