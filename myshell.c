@@ -13,7 +13,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 extern char **getaline();
-
+//int spawn_proc(int in, int out, char** args);
 
 /*
  * Handle exit signals from child processes
@@ -35,10 +35,8 @@ main() {
     int block;
     int output;
     int input;
-    int pipe;
     char *output_filename;
     char *input_filename;
-    char *pipe_command;
 
   // Set up the signal handler
 //  sigset(SIGCHLD,  sig_handler);
@@ -58,8 +56,8 @@ main() {
             // Print out the prompt and get the input
             printf("%s$ ", buff);
             args = getaline();
-
-            // No input, continue
+            
+	    // No input, continue
             if(args[0] == NULL)
                 continue;
 
@@ -67,25 +65,26 @@ main() {
             if(internal_command(args))
                 continue;
 
+	    // semi colon
             int index = 0;
             int numPipes = 0;
             int cmdcount=0;
             char*** cmd[10];
-            cmd[cmdcount] = &args[0];
+            cmd[0] = &args[0];
             cmdcount++;
             while(args[index] != NULL){
-                if(args[index][0] == ';'){
-                    cmd[cmdcount] = &args[index+1];
-                    free(args[index]);
+                if(args[index][0] == ';'){//check for semi colon
+                    cmd[cmdcount] = &args[index+1];//save memory address of next command
+                    free(args[index]); //rid of ;
                     args[index] = NULL;
                     cmdcount++;
                 }
                 index++;
             }
-
+		
+	    //loop through each command and execute it
             int j;
             for(j=0;j < cmdcount; j++){
-                printf("COMMAND: %s\n", *cmd[j]);
                 args = cmd[j];
 
                 // Check for an ampersand
@@ -124,27 +123,40 @@ main() {
                         break;
                 }
 
-                //Check for pipe
-                //pipe = redirect_pipe(args, &pipe_command);
-
+                //pipe
                 index = 0;
                 int pipeCount = 0;
+		char*** pipeCmd[10];
+		pipeCmd[0] = args;
                 while(args[index] != NULL){
-                    if(args[index][0] == '|'){
-                        cmd[pipeCount] = &args[index+1];
-                        free(args[index]);
-                        args[index] = NULL;
+                    if(args[index][0] == '|'){//check for |
                         pipeCount++;
+			pipeCmd[pipeCount] = &args[index+1];//save memory address of the start of the next command 
+                        free(args[index]);//remove | for null terminated string
+                        args[index] = NULL;
                     }
                     index++;
                 }
-
+		
+		int fd[2];
+		int in =0;
+  		for (index = 0; index < pipeCount; ++index){
+	//		printf("processing: %s\n", *pipeCmd[index]);
+			pipe (fd);//create pipe 
+			spawn_proc(in, fd[1], pipeCmd[index]);//execute all commands execept the last one
+      			close (fd [1]);
+      			in = fd [0];
+		}
+		if (in != 0)
+    			dup2 (in, 0);
 
 
                 // Do the command
-                do_command(args, block,
+                do_command(pipeCmd[index], block,
                        input, input_filename,
                         output, output_filename);
+
+		
             }
         }
     }
@@ -215,18 +227,8 @@ int do_command(char **args, int block,
         if(output==2)
             freopen(output_filename, "a", stdout);
 
-//	printf("%s\n", args[0]);
-//	printf("%s\n", args[1]);
-
-//    if(pipe){
-//      printf("Args 0 = %s\n", args[0]);
-//      printf("Args 2 = %s\n", args[2]);
-//      result = execvp(args[0], args);
-//    }else{
       // Execute the command
-
         result = execvp(args[0], args);
-//    }
         exit(-1);
     }
 
@@ -324,36 +326,32 @@ int redirect_output(char **args, char **output_filename) {
   return 0;
 }
 
-/*
- * Check for pipe redirection
- */
-//int redirect_pipe(char **args, char **pipe_command) {
-//  int i;
-//  int j;
-//
-//  for(i = 0; args[i] != NULL; i++) {
-//
-//    // Look for the |
-//    if(args[i][0] == '|') {
-//      free(args[i]);
-//
-//      // Read the command
-//      if(args[i+1] != NULL) {
-//	*pipe_command = args[i+1];
-//      } else {
-//	return -1;
-//      }
-//
-//      // Adjust the rest of the arguments in the array
-//      for(j = i; args[j-1] != NULL; j++) {
-//	args[j] = args[j+2];
-//      }
-//
-//      return 1;
-//    }
-//  }
-//
-//  return 0;
-//}
+int spawn_proc (int in, int out, char** cmd){
+    pid_t pid;
+    pid = fork();	
+    
+    // Check for errors in fork()
+    switch(child_id) {
+        case EAGAIN:
+            perror("Error EAGAIN: ");
+            return;
+        case ENOMEM:
+            perror("Error ENOMEM: ");
+            return;
+    }
+	
+    if (pid == 0){//is child
+       if (in != 0){//not on first iteration point stdin to in descriptor
+          dup2 (in, 0);
+          close (in);
+        }
 
+      if (out != 1){//not 
+          dup2 (out, 1);
+          close (out);
+        }
+      return do_command(cmd, 1, 0, NULL, 0, NULL);
+    }
+  return pid;
+}
 
