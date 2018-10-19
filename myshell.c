@@ -137,25 +137,31 @@ main() {
                     }
                     index++;
                 }
-		
+		int saved = dup(1);
+		int saved_in = dup(0);
 		int fd[2];
 		int in =0;
   		for (index = 0; index < pipeCount; ++index){
-	//		printf("processing: %s\n", *pipeCmd[index]);
 			pipe (fd);//create pipe 
-			spawn_proc(in, fd[1], pipeCmd[index]);//execute all commands execept the last one
-      			close (fd [1]);
+               	 	//printf("first commandbefore: %s\n", *pipeCmd[index]);
+			spawn_proc(in, fd[1], pipeCmd[index]);//execute all commands execept the last one	
+			//dup2(1, fd[1]);	
+			//printf("first commandafter: %s\n", *pipeCmd[index]);
+			//close (fd [1]);
       			in = fd [0];
 		}
+		
 		if (in != 0)
-    			dup2 (in, 0);
-
-
-                // Do the command
+    			dup2 (in, 0);//point input to the last output
+		
+		dup2( saved, 1);//point output to stdout
+		close(saved);
+		
+		// Do the command
                 do_command(pipeCmd[index], block,
                        input, input_filename,
                         output, output_filename);
-
+		dup2(saved_in, 0);//point input to stdin
 		
             }
         }
@@ -226,15 +232,15 @@ int do_command(char **args, int block,
             freopen(output_filename, "w+", stdout);
         if(output==2)
             freopen(output_filename, "a", stdout);
-
-      // Execute the command
+		
+	// Execute the command
         result = execvp(args[0], args);
         exit(-1);
     }
 
   // Wait for the child process to complete, if necessary
     if(block) {
-        printf("Waiting for child, pid = %d\n", child_id);
+      //  printf("Waiting for child, pid = %d\n", child_id);
         result = waitpid(child_id, &status, 0);
     }else{
         printf("%d started in background\n", child_id);
@@ -328,30 +334,30 @@ int redirect_output(char **args, char **output_filename) {
 
 int spawn_proc (int in, int out, char** cmd){
     pid_t pid;
-    pid = fork();	
+   // pid = fork();	
     
     // Check for errors in fork()
-    switch(child_id) {
-        case EAGAIN:
-            perror("Error EAGAIN: ");
-            return;
-        case ENOMEM:
-            perror("Error ENOMEM: ");
-            return;
-    }
+    //switch(pid) {
+    //    case EAGAIN:
+    //        perror("Error EAGAIN: ");
+    //        return;
+    //    case ENOMEM:
+    //        perror("Error ENOMEM: ");
+    //        return;
+   // }
 	
-    if (pid == 0){//is child
-       if (in != 0){//not on first iteration point stdin to in descriptor
-          dup2 (in, 0);
-          close (in);
+    //if (pid == 0){//is child
+       if (in != 0){//not reading from stdin
+          dup2 (in, 0);// point stdin to 'in' descriptor
+          //close (in);
         }
 
-      if (out != 1){//not 
-          dup2 (out, 1);
-          close (out);
+      if (out != 1){//not sending to stdout
+          dup2 (out, 1);//point stdout to the given descriptor
+         // close (out);
         }
       return do_command(cmd, 1, 0, NULL, 0, NULL);
-    }
-  return pid;
+    //}
+  //return pid;
 }
 
