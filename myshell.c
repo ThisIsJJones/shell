@@ -141,7 +141,7 @@ main() {
 		int saved_in = dup(0);
 		int fd[2];
 		int in =0;
-  		for (index = 0; index < pipeCount; ++index){
+  		for (index = 0; index < pipeCount; index++){
 			pipe (fd);//create pipe 
                	 	//printf("first commandbefore: %s\n", *pipeCmd[index]);
 			spawn_proc(in, fd[1], pipeCmd[index]);//execute all commands execept the last one	
@@ -161,6 +161,7 @@ main() {
                 do_command(pipeCmd[index], block,
                        input, input_filename,
                         output, output_filename);
+
 		dup2(saved_in, 0);//point input to stdin
 		
             }
@@ -334,30 +335,15 @@ int redirect_output(char **args, char **output_filename) {
 
 int spawn_proc (int in, int out, char** cmd){
     pid_t pid;
-   // pid = fork();	
-    
-    // Check for errors in fork()
-    //switch(pid) {
-    //    case EAGAIN:
-    //        perror("Error EAGAIN: ");
-    //        return;
-    //    case ENOMEM:
-    //        perror("Error ENOMEM: ");
-    //        return;
-   // }
-	
-    //if (pid == 0){//is child
        if (in != 0){//not reading from stdin
           dup2 (in, 0);// point stdin to 'in' descriptor
-          //close (in);
+          close (in);
         }
 
       if (out != 1){//not sending to stdout
           dup2 (out, 1);//point stdout to the given descriptor
-         // close (out);
+          close (out);
         }
       return do_command(cmd, 1, 0, NULL, 0, NULL);
-    //}
-  //return pid;
 }
 
