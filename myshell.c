@@ -13,41 +13,19 @@
 #include <signal.h>
 #include <sys/wait.h>
 extern char **getaline();
-//int spawn_proc(int in, int out, char** args);
 
-/*
- * Handle exit signals from child processes
- */
-void sig_handler(int signal) {
-//  int status;
-//  int result = wait(&status);
-
-  printf("Wait returned %d\n", signal);
-}
 
 /*
  * The main shell function
  */
 main() {
-    int i;
     char **args;
-    int result;
-    int block;
-    int output;
-    int input;
-    char *output_filename;
-    char *input_filename;
-
-  // Set up the signal handler
-//  sigset(SIGCHLD,  sig_handler);
-
+    int saved_in = dup(0);
+    int saved_out = dup(1);
 // Loop forever
     while(1) {
         int status;
         int pid =  waitpid(-1, &status, WNOHANG);
-        char* buff[100];
-        getcwd(buff, 100);
-
         if(pid>0){
             printf("PID %d has finished\n", pid);
         }else{
@@ -55,7 +33,8 @@ main() {
             getcwd(buff, 100);
             // Print out the prompt and get the input
             printf("%s$ ", buff);
-            args = getaline();
+            dup2(saved_in, 0);	
+	    args = getaline();
             
 	    // No input, continue
             if(args[0] == NULL)
@@ -65,108 +44,113 @@ main() {
             if(internal_command(args))
                 continue;
 
-	    // semi colon
-            int index = 0;
-            int numPipes = 0;
-            int cmdcount=0;
-            char*** cmd[10];
-            cmd[0] = &args[0];
-            cmdcount++;
-            while(args[index] != NULL){
-                if(args[index][0] == ';'){//check for semi colon
-                    cmd[cmdcount] = &args[index+1];//save memory address of next command
-                    free(args[index]); //rid of ;
-                    args[index] = NULL;
-                    cmdcount++;
-                }
-                index++;
-            }
-		
-	    //loop through each command and execute it
-            int j;
-            for(j=0;j < cmdcount; j++){
-                args = cmd[j];
-
-                // Check for an ampersand
-                block = ampersand(args);
-
-                // Check for redirected input
-                input = redirect_input(args, &input_filename);
-
-                switch(input) {
-                case -1:
-                    printf("Syntax error!\n");
-                    continue;
-                    break;
-                case 0:
-                    break;
-                case 1:
-                    printf("Redirecting input from: %s\n", input_filename);
-                    break;
-                }
-
-                 // Check for redirected output
-                output = redirect_output(args, &output_filename);
-
-                switch(output) {
-                    case -1:
-                        printf("Syntax error!\n");
-                        continue;
-                        break;
-                    case 0:
-                        break;
-                    case 1:
-                        printf("Redirecting output to: %s\n", output_filename);
-                        break;
-                    case 2:
-                        printf("Redirecting >> output to: %s\n", output_filename);
-                        break;
-                }
-
-                //pipe
-                index = 0;
-                int pipeCount = 0;
-		char*** pipeCmd[10];
-		pipeCmd[0] = args;
-                while(args[index] != NULL){
-                    if(args[index][0] == '|'){//check for |
-                        pipeCount++;
-			pipeCmd[pipeCount] = &args[index+1];//save memory address of the start of the next command 
-                        free(args[index]);//remove | for null terminated string
-                        args[index] = NULL;
-                    }
-                    index++;
-                }
-		int saved = dup(1);
-		int saved_in = dup(0);
-		int fd[2];
-		int in =0;
-  		for (index = 0; index < pipeCount; index++){
-			pipe (fd);//create pipe 
-               	 	//printf("first commandbefore: %s\n", *pipeCmd[index]);
-			spawn_proc(in, fd[1], pipeCmd[index]);//execute all commands execept the last one	
-			//dup2(1, fd[1]);	
-			//printf("first commandafter: %s\n", *pipeCmd[index]);
-			//close (fd [1]);
-      			in = fd [0];
-		}
-		
-		if (in != 0)
-    			dup2 (in, 0);//point input to the last output
-		
-		dup2( saved, 1);//point output to stdout
-		close(saved);
-		
-		// Do the command
-                do_command(pipeCmd[index], block,
-                       input, input_filename,
-                        output, output_filename);
-
-		dup2(saved_in, 0);//point input to stdin
-		
-            }
-        }
+            findCharacters(&args, saved_in, saved_out, 0);
+	}
     }
+}	
+
+void findCharacters(char*** args, int saved_in, int saved_out, int cancelCommand){
+	int index=0;
+	while((*args)[index] != NULL){
+		if((*args)[index][0] == ';'){
+			free((*args)[index]);
+			(*args)[index] = NULL;
+			dup2(saved_out, 1);
+			if(!cancelCommand){
+				int output;
+   				int input;
+    				char *output_filename;
+    				char *input_filename;
+				input = redirect_input(*args, &input_filename);
+				output = redirect_output(*args, &output_filename);
+				do_command(*args, 1, input, input_filename, output, output_filename);
+			}
+			*args = &(*args)[index+1];
+			findCharacters(args, saved_in, saved_out, 0);
+			return;
+		}else if((*args)[index][0] == '|' && (*args)[index+1][0] != '|'){
+			free((*args)[index]);		
+			(*args)[index] = NULL;
+			if(!cancelCommand){
+				int output;
+   				int input;
+    				char *output_filename;
+    				char *input_filename;
+				input = redirect_input(*args, &input_filename);
+				output = redirect_output(*args, &output_filename);
+				
+				int fd[2];
+				pipe(fd);
+				dup2(fd[1], 1);
+				close(fd[1]);
+				
+				do_command(*args, 1, input, input_filename, output, output_filename);
+				*args = &(*args)[index+1];
+				dup2(fd[0], 0);
+				close(fd[0]);
+			}
+			findCharacters(args, saved_in, saved_out, 0);
+			return;
+		}else if((*args)[index][0] == '&' && (*args)[index+1] != NULL && (*args)[index+1][0] == '&'){
+			free((*args)[index]);		
+			(*args)[index] = NULL;
+			free((*args)[index+1]);		
+			(*args)[index+1] = NULL;
+			dup2(saved_out, 1);
+			int status;
+			if(!cancelCommand){
+				int output;
+   				int input;
+    				char *output_filename;
+    				char *input_filename;
+				input = redirect_input(*args, &input_filename);
+				output = redirect_output(*args, &output_filename);
+				status = do_command(*args, 1, input, input_filename, output, output_filename);
+			}
+			int cancelNextCommand = 0;
+			if(status!=0){
+				cancelNextCommand = 1;
+			}
+			*args = &(*args)[index+2];
+			findCharacters(args, saved_in, saved_out, cancelNextCommand);		
+			return;
+		}else if((*args)[index][0] == '|' && (*args)[index+1][0] == '|'){
+			free((*args)[index]);		
+			(*args)[index] = NULL;
+			free((*args)[index+1]);		
+			(*args)[index+1] = NULL;
+			dup2(saved_out, 1);
+			int status;
+			if(!cancelCommand){
+				int output;
+   				int input;
+    				char *output_filename;
+    				char *input_filename;
+				input = redirect_input(*args, &input_filename);
+				output = redirect_output(*args, &output_filename);
+				status = do_command(*args, 1, input, input_filename, output, output_filename);
+			}
+			int cancelNextCommand = 0;
+			if(status==0){
+				cancelNextCommand = 1;
+			}
+			*args = &(*args)[index+2];
+			findCharacters(args, saved_in, saved_out, cancelNextCommand);		
+			return;
+		}
+	index++;
+	}
+	dup2(saved_out, 1);
+	if(!cancelCommand){
+		int output;
+ 		int input;
+    		char *output_filename;
+    		char *input_filename;
+		input = redirect_input(*args, &input_filename);
+		output = redirect_output(*args, &output_filename);
+		int block = ampersand(*args);
+		do_command(*args, block, input, input_filename, output, output_filename);
+	}
 }
 
 /*
@@ -176,7 +160,7 @@ int ampersand(char **args) {
     int i;
 
     for(i = 1; args[i] != NULL; i++) ;
-    if(args[i-1][0] == '&') {
+	if(args[i-1][0] == '&') {
         free(args[i-1]);
         args[i-1] = NULL;
         return 0;
@@ -243,6 +227,7 @@ int do_command(char **args, int block,
     if(block) {
       //  printf("Waiting for child, pid = %d\n", child_id);
         result = waitpid(child_id, &status, 0);
+	return status;
     }else{
         printf("%d started in background\n", child_id);
     }
@@ -331,19 +316,5 @@ int redirect_output(char **args, char **output_filename) {
   }
 
   return 0;
-}
-
-int spawn_proc (int in, int out, char** cmd){
-    pid_t pid;
-       if (in != 0){//not reading from stdin
-          dup2 (in, 0);// point stdin to 'in' descriptor
-          close (in);
-        }
-
-      if (out != 1){//not sending to stdout
-          dup2 (out, 1);//point stdout to the given descriptor
-          close (out);
-        }
-      return do_command(cmd, 1, 0, NULL, 0, NULL);
 }
 
