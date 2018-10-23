@@ -1,0 +1,7 @@
+A shell that handles pipes, semi colons, &&, ||, and background processes.
+
+Compile the shell with: 'make'
+Run the shell with: './shell'
+Enjoy the shell
+
+
